@@ -47,7 +47,6 @@ contract CounterTest is Test {
     uint256 balance = counter.getBalance(user);
     assertEq(balance, 0.2 ether);
   }
-
   function testWithdrawMustEmitEvent() public {
     vm.startPrank(user);
     vm.expectEmit(true, false, false, true);
@@ -57,6 +56,24 @@ contract CounterTest is Test {
     emit MiniBank.Withdraw(user, 0.5 ether);
     counter.withdraw(0.5 ether);
     vm.stopPrank();
+  }
+  function testWithdrawFail() public {
+    vm.startPrank(user);
+    counter.deposit{value: 0.5 ether}();
+    vm.expectRevert(abi.encodeWithSelector(MiniBank.InsufficientBalance.selector));
+    counter.withdraw(0.6 ether);
+    vm.expectRevert(abi.encodeWithSelector(MiniBank.WithdrawAmountMustBeGreaterThanZero.selector, 0));
+    counter.withdraw(0);
+    vm.stopPrank();
+  }
+
+  function testGetBalance() public {
+    vm.startPrank(user);
+    counter.deposit{value: 0.7 ether}();
+    vm.stopPrank();
+
+    uint256 balance = counter.getBalance(user);
+    assertEq(balance, 0.7 ether);
   }
 
 }
