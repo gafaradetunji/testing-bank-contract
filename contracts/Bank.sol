@@ -16,19 +16,15 @@ contract MiniBank is IBank, BaseBank {
     event Deposit(address indexed user, uint256 amount);
     event Withdraw(address indexed user, uint256 amount);
 
-    receive() external payable {
-        deposit();
-    }
-
-    function deposit() public payable override {
+    function deposit() external payable override {
         if (msg.value <= 0) revert DepositMustBeGreaterThanZero(msg.value);
         balances[msg.sender] = balances[msg.sender].safeAdd(msg.value);
         emit Deposit(msg.sender, msg.value);
     }
 
-    function withdraw(uint256 amount) public override {
+    function withdraw(uint256 amount) external override {
         if (amount <= 0) revert WithdrawAmountMustBeGreaterThanZero(amount);
-        if (balances[msg.sender] <= amount) revert InsufficientBalance();
+        if (balances[msg.sender] < amount) revert InsufficientBalance();
 
         balances[msg.sender] = balances[msg.sender].safeSub(amount);
 
@@ -41,4 +37,6 @@ contract MiniBank is IBank, BaseBank {
     function getBalance(address user) public view override returns (uint256) {
         return balances[user];
     }
+
+    receive() external payable {} 
 }
