@@ -11,7 +11,7 @@ contract CounterTest is Test {
   function setUp() public {
     counter = new MiniBank();
     user = vm.addr(1);
-    vm.deal(user, 1 ether);
+    vm.deal(user, 10 ether);
   }
 
   function testDeposit() public {
@@ -36,6 +36,20 @@ contract CounterTest is Test {
     emit MiniBank.Deposit(user, 0.5 ether);
     counter.deposit{value: 0.5 ether}();
     vm.stopPrank();
+  }
+
+  function testFuzz_Deposit(uint256 amount) public {
+    vm.assume(amount > 0 && amount <= 1 ether);
+
+    user = vm.addr(1);
+    vm.deal(user, 1 ether);
+
+    vm.startPrank(user);
+    counter.deposit{value: amount}();
+    vm.stopPrank();
+
+    uint256 balance = counter.getBalance(user);
+    assertEq(balance, amount);
   }
 
   function testWithdraw() public {
@@ -66,6 +80,20 @@ contract CounterTest is Test {
     counter.withdraw(0);
     vm.stopPrank();
   }
+  function testFuzz_Withdraw(uint256 amount) public {
+    amount = bound(amount, 0.1 ether, type(uint256).max);
+
+    user = vm.addr(1);
+    vm.deal(user, type(uint256).max);
+
+    vm.startPrank(user);
+    counter.deposit{value: amount}();
+    counter.withdraw(amount);
+    vm.stopPrank();
+
+    uint256 balance = counter.getBalance(user);
+    assertEq(balance, 0);
+  }
 
   function testGetBalance() public {
     vm.startPrank(user);
@@ -75,5 +103,28 @@ contract CounterTest is Test {
     uint256 balance = counter.getBalance(user);
     assertEq(balance, 0.7 ether);
   }
+
+  function invariant_alwaysWithdrawable() external {
+    user = vm.addr(1);
+    vm.deal(user, type(uint256).max);
+
+    uint256 randomSeed = uint256(keccak256(abi.encodePacked(block.timestamp, block.prevrandao, address(this))));
+    uint256 amount = bound(randomSeed, 0.1 ether, type(uint256).max);
+
+    vm.startPrank(user);
+    counter.deposit{value: amount}();
+    uint256 balanceBefore = counter.getBalance(user);
+    vm.stopPrank();
+
+    assertEq(balanceBefore, amount, "Deposit balance mismatch");
+
+    vm.startPrank(user);
+    counter.withdraw(amount);
+    uint256 balanceAfter = counter.getBalance(user);
+    vm.stopPrank();
+
+    assertGt(balanceBefore, balanceAfter, "Balance did not decrease after withdraw");
+}
+
 
 }
