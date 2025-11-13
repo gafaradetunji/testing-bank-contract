@@ -1,10 +1,19 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.20;
 
 interface IBank {
-    function deposit() external payable;
+    function getEthBalance(address user) external view returns (uint256);
+    function getUSDTBalance(address user) external view returns (uint256);
 
-    function withdraw(uint256 amount) external;
+    function createPlan(
+        string calldata name, 
+        uint256 endDate, 
+        uint256 amount
+    ) external payable;
 
-    function getBalance(address account) external view returns (uint256);
+    function updatePlan(
+        uint8 planId,
+        uint256 endDate,
+        uint256 usdtAmount
+    ) external payable;
 }
