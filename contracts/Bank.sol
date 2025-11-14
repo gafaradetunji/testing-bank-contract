@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.20;
 
+import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -15,7 +16,7 @@ import "./library/BankLibrary.sol";
  *         create savings plans, and manage them (update or remove).
  * @dev Uses SafeERC20 for USDT transfers and ReentrancyGuard for safety.
  */
-contract MiniBank is IBank, BaseBank, ReentrancyGuard {
+contract MiniBank is IBank, BaseBank, ReentrancyGuard, Initializable {
     using BankLibrary for uint;
     using SafeERC20 for IERC20;
 
@@ -30,13 +31,17 @@ contract MiniBank is IBank, BaseBank, ReentrancyGuard {
     error PlanHasActiveFunds(uint256 ethAmount, uint256 usdtAmount);
     error NoFundsToWithdraw();
     error zeroAddress();
+    error AlreadyInitialized();
+    error NotInitialized();
 
     // ----------- Constants & State Variables ----------- //
     uint256 public constant MAX_PLANS = 10;
     uint256 public constant platformFeeBps = 50; // 0.5%
     uint256 public constant earlyWithdrawalPenaltyBps = 500; // 5%
-    IERC20 public immutable usdt;
+    
+    IERC20 public usdt;
     address public treasury;
+    bool private initialized;
 
     mapping(address => uint256) private ethBalances;
     mapping(address => uint256) private usdtBalances;
@@ -66,15 +71,16 @@ contract MiniBank is IBank, BaseBank, ReentrancyGuard {
     event PlanCreated(address indexed user, uint8 planIndex, string name);
     event PlanUpdated(address indexed user, uint8 planIndex, string name);
 
-    /**
-     * @notice Initializes the MiniBank contract with a USDT token reference.
-     * @param _usdt The address of the USDT token contract.
-     */
-    constructor(IERC20 _usdt, address _treasury) BaseBank() {
-        if(address(_usdt) == address(0)) revert zeroAddress();
-        if(_treasury == address(0)) revert zeroAddress();
+   modifier onlyInitialized() {
+        if (!initialized) revert NotInitialized();
+        _;
+    }
+
+    function initialize(IERC20 _usdt, address _treasury) external initializer {
+        if (address(_usdt) == address(0) || _treasury == address(0)) revert zeroAddress();
         usdt = _usdt;
         treasury = _treasury;
+        initialized = true;
     }
 
     /// @notice Allows contract to receive plain ETH transfers.

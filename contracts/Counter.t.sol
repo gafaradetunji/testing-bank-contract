@@ -20,18 +20,24 @@ contract MiniBankTest is Test {
     address user2 = address(0x456);
 
     function setUp() public {
-        usdt = new MockUSDT();
-        bank = new MiniBank(IERC20(address(usdt)), treasury);
-        vm.deal(user, 10 ether);
-        vm.deal(user2, 5 ether);
-        usdt.transfer(user, 1000 ether);
-        usdt.transfer(user2, 1000 ether);
+      usdt = new MockUSDT();
+
+      bank = new MiniBank();
+      bank.initialize(usdt, treasury);
+
+      vm.deal(user, 10 ether);
+      vm.deal(user2, 5 ether);
+
+      usdt.transfer(user, 1000 ether);
+      usdt.transfer(user2, 1000 ether);
     }
 
     // ---- Constructor ----
     function test_RevertWhenZeroAddress() public {
-        vm.expectRevert(MiniBank.zeroAddress.selector);
-        new MiniBank(IERC20(address(0)), treasury);
+      // vm.expectRevert(MiniBank.zeroAddress.selector);
+      MiniBank b = new MiniBank();
+      vm.expectRevert(MiniBank.zeroAddress.selector);
+      b.initialize(IERC20(address(0)), treasury);
     }
 
     // ---- Deposits ----
@@ -89,6 +95,120 @@ contract MiniBankTest is Test {
         vm.expectRevert(MiniBank.MixedDepositNotAllowed.selector);
         bank.createPlan{value: 1 ether}("Invalid", block.timestamp + 1 days, 10 ether);
         vm.stopPrank();
+    }
+
+        // ---- Fuzz Tests for Deposits ----
+    function testFuzz_DepositETH(uint256 amount) public {
+        // Bound deposit between 0.01 and 20 ether
+        amount = bound(amount, 0.01 ether, 20 ether);
+
+        address user1 = vm.addr(1);
+        vm.deal(user1, 50 ether);
+
+        // Record initial state
+        uint256 beforeBalance = address(bank).balance;
+        uint256 beforeUserBalance = bank.getEthBalance(user1);
+
+        // Execute deposit
+        vm.startPrank(user1);
+        bank.createPlan{value: amount}("ETH Deposit Fuzz", block.timestamp + 2 days, 0);
+        vm.stopPrank();
+
+        // Post-state assertions
+        uint256 afterBalance = address(bank).balance;
+        uint256 afterUserBalance = bank.getEthBalance(user1);
+
+        assertEq(afterBalance, beforeBalance + amount, "Contract ETH balance mismatch");
+        assertEq(afterUserBalance, beforeUserBalance + amount, "User ETH balance mismatch");
+    }
+
+    function testFuzz_DepositUSDT(uint256 amount) public {
+        // Bound deposit between 10 and 10000 USDT
+        amount = bound(amount, 10 ether, 10_000 ether);
+
+        address user20 = vm.addr(2);
+        usdt.transfer(user20, amount);
+        vm.startPrank(user20);
+        usdt.approve(address(bank), amount);
+
+        uint256 beforeBankBalance = usdt.balanceOf(address(bank));
+        uint256 beforeUserBalance = bank.getUSDTBalance(user20);
+
+        // Execute deposit
+        bank.createPlan("USDT Deposit Fuzz", block.timestamp + 3 days, amount);
+        vm.stopPrank();
+
+        uint256 afterBankBalance = usdt.balanceOf(address(bank));
+        uint256 afterUserBalance = bank.getUSDTBalance(user20);
+
+        assertEq(afterBankBalance, beforeBankBalance + amount, "Contract USDT balance mismatch");
+        assertEq(afterUserBalance, beforeUserBalance + amount, "User USDT balance mismatch");
+    }
+
+        // ---- Invariant Tests for Deposits ----
+    function invariant_depositETHConsistency() external {
+        uint256 randomSeed = uint256(
+            keccak256(abi.encodePacked(block.timestamp, block.prevrandao, address(this)))
+        );
+        uint256 amount = bound(randomSeed, 0.01 ether, 10 ether);
+
+        address user3 = vm.addr(3);
+        vm.deal(user3, 30 ether);
+
+        uint256 beforeContractBalance = address(bank).balance;
+        uint256 beforeUserBalance = bank.getEthBalance(user3);
+
+        vm.startPrank(user3);
+        bank.createPlan{value: amount}("Invariant ETH Deposit", block.timestamp + 1 days, 0);
+        vm.stopPrank();
+
+        uint256 afterContractBalance = address(bank).balance;
+        uint256 afterUserBalance = bank.getEthBalance(user3);
+
+        // Invariant: Total ETH change matches deposit amount
+        assertEq(
+            afterContractBalance - beforeContractBalance,
+            amount,
+            "ETH invariant failed: contract mismatch"
+        );
+        assertEq(
+            afterUserBalance - beforeUserBalance,
+            amount,
+            "ETH invariant failed: user mismatch"
+        );
+    }
+
+    function invariant_depositUSDTConsistency() external {
+        uint256 randomSeed = uint256(
+            keccak256(abi.encodePacked(block.timestamp, block.prevrandao, address(this)))
+        );
+        uint256 amount = bound(randomSeed, 10 ether, 10_000 ether);
+
+        address user4 = vm.addr(4);
+        usdt.transfer(user4, amount);
+        vm.startPrank(user4);
+        usdt.approve(address(bank), amount);
+
+        uint256 beforeContractBalance = usdt.balanceOf(address(bank));
+        uint256 beforeUserBalance = bank.getUSDTBalance(user4);
+
+        bank.createPlan("Invariant USDT Deposit", block.timestamp + 2 days, amount);
+        vm.stopPrank();
+
+        uint256 afterContractBalance = usdt.balanceOf(address(bank));
+        uint256 afterUserBalance = bank.getUSDTBalance(user4);
+
+        // Invariant: Contract and internal balance must increase equally
+        assertEq(
+            afterContractBalance - beforeContractBalance,
+            amount,
+            "USDT invariant failed: contract mismatch"
+        );
+        assertEq(
+            afterUserBalance - beforeUserBalance,
+            amount,
+            "USDT invariant failed: user mismatch"
+        );
     }
 
     function test_RevertInvalidEndDate() public {
@@ -177,11 +297,11 @@ contract MiniBankTest is Test {
       amount = bound(amount, 0.01 ether, 10 ether);
 
       // Setup
-      address user = vm.addr(1);
-      vm.deal(user, 20 ether);
+      address user5 = vm.addr(1);
+      vm.deal(user5, 20 ether);
 
       // User creates a plan
-      vm.startPrank(user);
+      vm.startPrank(user5);
       bank.createPlan{value: amount}("ETH Fuzz Plan", block.timestamp + 1 days, 0);
 
       // Warp forward to after plan end date
@@ -192,7 +312,7 @@ contract MiniBankTest is Test {
       vm.stopPrank();
 
       // Check plan count via getter
-      uint256 planCount = bank.getUserPlanCount(user);
+      uint256 planCount = bank.getUserPlanCount(user5);
       assertEq(planCount, 0);
 
       // Verify contract’s ETH balance reduced by roughly amount (minus fee)
@@ -205,9 +325,9 @@ contract MiniBankTest is Test {
       // Bound fuzz input (10–10_000 ether)
       amount = bound(amount, 10 ether, 10_000 ether);
 
-      address user = vm.addr(1);
-      usdt.transfer(user, amount);
-      vm.startPrank(user);
+      address user6 = vm.addr(1);
+      usdt.transfer(user6, amount);
+      vm.startPrank(user6);
 
       // Approve and create plan
       usdt.approve(address(bank), amount);
@@ -217,7 +337,7 @@ contract MiniBankTest is Test {
       vm.warp(block.timestamp + 2 days);
 
       // Get balances before
-      uint256 userBefore = usdt.balanceOf(user);
+      uint256 userBefore = usdt.balanceOf(user6);
       uint256 treasuryBefore = usdt.balanceOf(treasury);
 
       // Withdraw
@@ -229,7 +349,7 @@ contract MiniBankTest is Test {
       uint256 expectedUserBalance = userBefore + (amount - fee);
       uint256 expectedTreasuryBalance = treasuryBefore + fee;
 
-      assertEq(usdt.balanceOf(user), expectedUserBalance);
+      assertEq(usdt.balanceOf(user6), expectedUserBalance);
       assertEq(usdt.balanceOf(treasury), expectedTreasuryBalance);
     }
 
@@ -242,13 +362,13 @@ contract MiniBankTest is Test {
       uint256 amount = bound(randomSeed, 0.01 ether, 10 ether);
 
       // Setup user and fund
-      address user = vm.addr(1);
-      vm.deal(user, 20 ether);
+      address user7 = vm.addr(1);
+      vm.deal(user7, 20 ether);
 
       // Deposit into ETH plan
-      vm.startPrank(user);
+      vm.startPrank(user7);
       bank.createPlan{value: amount}("Invariant ETH Plan", block.timestamp + 1 days, 0);
-      uint256 balanceBefore = bank.getEthBalance(user);
+      uint256 balanceBefore = bank.getEthBalance(user7);
       vm.stopPrank();
 
       assertEq(balanceBefore, amount, "Deposit mismatch for ETH");
@@ -257,9 +377,9 @@ contract MiniBankTest is Test {
       vm.warp(block.timestamp + 2 days);
 
       // Withdraw full amount
-      vm.startPrank(user);
+      vm.startPrank(user7);
       bank.WithdrawFromPlan(0);
-      uint256 balanceAfter = bank.getEthBalance(user);
+      uint256 balanceAfter = bank.getEthBalance(user7);
       vm.stopPrank();
 
       // Balance must decrease
@@ -274,14 +394,14 @@ contract MiniBankTest is Test {
       uint256 amount = bound(randomSeed, 10 ether, 10_000 ether);
 
       // Setup user and fund
-      address user = vm.addr(1);
-      usdt.transfer(user, amount);
+      address user8 = vm.addr(1);
+      usdt.transfer(user8, amount);
 
       // Deposit into USDT plan
-      vm.startPrank(user);
+      vm.startPrank(user8);
       usdt.approve(address(bank), amount);
       bank.createPlan("Invariant USDT Plan", block.timestamp + 1 days, amount);
-      uint256 balanceBefore = bank.getUSDTBalance(user);
+      uint256 balanceBefore = bank.getUSDTBalance(user8);
       vm.stopPrank();
 
       assertEq(balanceBefore, amount, "Deposit mismatch for USDT");
@@ -290,9 +410,9 @@ contract MiniBankTest is Test {
       vm.warp(block.timestamp + 2 days);
 
       // Withdraw full amount
-      vm.startPrank(user);
+      vm.startPrank(user8);
       bank.WithdrawFromPlan(0);
-      uint256 balanceAfter = bank.getUSDTBalance(user);
+      uint256 balanceAfter = bank.getUSDTBalance(user8);
       vm.stopPrank();
 
       // Balance must decrease
