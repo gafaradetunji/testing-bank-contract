@@ -1,4 +1,13 @@
+'use client'
+import { Form, Formik } from "formik";
 import Image from "next/image";
+import * as Yup from "yup";
+import { FormikInput } from "../ui/modules/components";
+
+const validationSchema = Yup.object().shape({
+  email: Yup.string().email("Invalid email address").required(),
+  password: Yup.string().min(6, "Password must be at least 6 characters").required(),
+});
 
 export default function Home() {
   return (
@@ -12,6 +21,31 @@ export default function Home() {
           height={20}
           priority
         />
+        <Formik
+          initialValues={{
+            email: "",
+            password: "",
+          }}
+          validationSchema={validationSchema}
+          onSubmit={(values) => {
+            console.log(values);
+          }}
+        >
+          <Form>
+            <FormikInput 
+              name="email" 
+              type="email" 
+              placeholder="Email" 
+              className="mb-4"
+            />
+            <FormikInput 
+              name="password" 
+              type="password" 
+              placeholder="Password" 
+              className="mb-4"
+            />
+          </Form>
+        </Formik>
         <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
           <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
             To get started, edit the page.tsx file.
