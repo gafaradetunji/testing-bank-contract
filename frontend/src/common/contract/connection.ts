@@ -1,3 +1,7 @@
 import { ethers } from "ethers";
 
-// const provider = new ethers.providers.JsonRpcProvider();
+const provider = new ethers.JsonRpcProvider();
+
+const signer = await provider.getSigner();
+
+export { provider, signer };
