@@ -3,7 +3,7 @@ import { Form, Formik } from "formik";
 import Image from "next/image";
 import * as Yup from "yup";
 import { FormikInput } from "../ui/modules/components";
-import { WalletConnect } from "../ui/modules/components/ConnectWallet/WalletConnect";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
 
 const validationSchema = Yup.object().shape({
   email: Yup.string().email("Invalid email address").required(),
@@ -22,7 +22,7 @@ export default function Home() {
           height={20}
           priority
         />
-        <WalletConnect />
+        <ConnectButton />
         <Formik
           initialValues={{
             email: "",

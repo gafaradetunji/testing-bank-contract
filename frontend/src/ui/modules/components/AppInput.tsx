@@ -9,7 +9,6 @@ import { Collapsible, CollapsibleContent } from "./collapsible"
 export function AppInput({
   errorMessage,
   error,
-  helperText,
   ...props
 }) {
   const [open, setOpen] = useState(Boolean(error))
